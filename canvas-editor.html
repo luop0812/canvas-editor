@@ -241,9 +241,11 @@ document.getElementById('btn-clear').addEventListener('click', () => {
 function handleFiles(files) {
   let x = 40, y = 40;
   [...files].forEach(file => {
-    const url = URL.createObjectURL(file);
+    const reader = new FileReader();
     const type = file.type.startsWith('video') ? 'video' : 'image';
-    makeEl(type, { src: url, x: x + Math.random() * 80, y: y + Math.random() * 60, w: 280, h: 200 });
+    const ex = { x: x + Math.random() * 80, y: y + Math.random() * 60, w: 280, h: 200 };
+    reader.onload = e => makeEl(type, { ...ex, src: e.target.result });
+    reader.readAsDataURL(file);
     x += 20; y += 20;
   });
 }
