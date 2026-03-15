@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Canvas Editor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f4f4f2; height: 100vh; display: flex; flex-direction: column; }
+  #app { display: flex; flex-direction: column; height: 100vh; }
+  #toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: #fff; border-bottom: 1px solid #e0ddd6; flex-wrap: wrap; }
+  .tool-btn { padding: 6px 13px; font-size: 13px; font-family: inherit; background: transparent; border: 1px solid #d0cec6; border-radius: 8px; cursor: pointer; color: #1a1a1a; white-space: nowrap; }
+  .tool-btn:hover { background: #f4f4f2; }
+  .tool-btn.active { background: #f4f4f2; border-color: #999; }
+  .sep { width: 1px; height: 24px; background: #e0ddd6; margin: 0 4px; }
+  #font-size { width: 58px; }
+  #canvas-wrap { flex: 1; overflow: auto; display: flex; align-items: flex-start; justify-content: flex-start; padding: 24px; }
+  #canvas { position: relative; width: 900px; min-height: 580px; background: #fff; border: 1px solid #d0cec6; box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow: hidden; flex-shrink: 0; }
+  .c-el { position: absolute; user-select: none; cursor: move; }
+  .c-el.selected { outline: 2px solid #378ADD; outline-offset: 2px; }
+  .c-el img, .c-el video { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
+  .c-el .txt-inner { width: 100%; height: 100%; overflow: hidden; word-break: break-word; white-space: pre-wrap; outline: none; }
+  .resize-handle { position: absolute; width: 11px; height: 11px; background: #fff; border: 2px solid #378ADD; border-radius: 2px; right: -6px; bottom: -6px; cursor: se-resize; z-index: 10; display: none; }
+  .delete-btn { position: absolute; top: -11px; right: -11px; width: 22px; height: 22px; background: #E24B4A; color: #fff; border-radius: 50%; font-size: 13px; display: none; align-items: center; justify-content: center; cursor: pointer; z-index: 10; line-height: 1; }
+  #drop-hint { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: #b0ada6; pointer-events: none; }
+  #drop-hint svg { opacity: 0.35; }
+  #drop-hint p { font-size: 15px; }
+  #drop-hint small { font-size: 13px; }
+  #canvas.drag-over { outline: 2.5px dashed #378ADD; outline-offset: -4px; }
+  #color-pick { width: 34px; height: 34px; padding: 2px; border: 1px solid #d0cec6; border-radius: 8px; cursor: pointer; }
+  label.tool-btn { cursor: pointer; }
+  #status { font-size: 12px; color: #888; margin-left: auto; }
+  #toolbar h1 { font-size: 15px; font-weight: 600; color: #1a1a1a; margin-right: 4px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="toolbar">
+    <h1>Canvas Editor</h1>
+    <div class="sep"></div>
+    <button class="tool-btn" id="btn-text">+ Text</button>
+    <label class="tool-btn" for="media-input">+ Image / Video</label>
+    <input type="file" id="media-input" accept="image/*,video/*" style="display:none" multiple>
+    <div class="sep"></div>
+    <input type="color" id="color-pick" value="#1a1a1a" title="Text color">
+    <select id="font-size" class="tool-btn">
+      <option>12</option><option>14</option><option selected>18</option><option>24</option><option>32</option><option>48</option><option>64</option>
+    </select>
+    <button class="tool-btn" id="btn-bold"><b>B</b></button>
+    <button class="tool-btn" id="btn-italic"><i>I</i></button>
+    <div class="sep"></div>
+    <button class="tool-btn" id="btn-clear">Clear all</button>
+    <button class="tool-btn" id="btn-export">⬇ Export PDF</button>
+    <span id="status"></span>
+  </div>
+  <div id="canvas-wrap">
+    <div id="canvas">
+      <div id="drop-hint">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+          <rect x="6" y="6" width="36" height="36" rx="5" stroke="#b0ada6" stroke-width="1.5" stroke-dasharray="5 3"/>
+          <path d="M16 24h16M24 16v16" stroke="#b0ada6" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <p>Drop images or videos here</p>
+        <small>Or use the toolbar to add text &amp; media</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const hint = document.getElementById('drop-hint');
+const status = document.getElementById('status');
+let selected = null;
+let dragEl = null, dragOffX = 0, dragOffY = 0;
+let resizing = false, resizeEl = null, resizeStartX, resizeStartY, resizeStartW, resizeStartH;
+
+function updateHint() {
+  hint.style.display = canvas.querySelectorAll('.c-el').length === 0 ? 'flex' : 'none';
+}
+
+function makeEl(type, extra = {}) {
+  const el = document.createElement('div');
+  el.className = 'c-el';
+  el.style.left = (extra.x || 60) + 'px';
+  el.style.top = (extra.y || 60) + 'px';
+  el.style.width = (extra.w || 220) + 'px';
+  el.style.height = (extra.h || 150) + 'px';
+  el.dataset.type = type;
+
+  const del = document.createElement('div');
+  del.className = 'delete-btn';
+  del.textContent = '×';
+  del.addEventListener('click', e => { e.stopPropagation(); el.remove(); updateHint(); });
+  el.appendChild(del);
+
+  const rz = document.createElement('div');
+  rz.className = 'resize-handle';
+  el.appendChild(rz);
+
+  if (type === 'text') {
+    el.style.height = 'auto';
+    el.style.minHeight = '44px';
+    const inner = document.createElement('div');
+    inner.className = 'txt-inner';
+    inner.contentEditable = 'true';
+    inner.style.fontSize = (extra.fontSize || 18) + 'px';
+    inner.style.color = extra.color || '#1a1a1a';
+    inner.style.fontWeight = extra.bold ? '700' : '400';
+    inner.style.fontStyle = extra.italic ? 'italic' : 'normal';
+    inner.style.fontFamily = 'Georgia, serif';
+    inner.textContent = 'Type here...';
+    inner.addEventListener('mousedown', e => e.stopPropagation());
+    inner.addEventListener('focus', () => {
+      selectEl(el);
+      if (inner.textContent === 'Type here...') inner.textContent = '';
+    });
+    el.appendChild(inner);
+  } else if (type === 'image') {
+    const img = document.createElement('img');
+    img.src = extra.src;
+    img.crossOrigin = 'anonymous';
+    el.appendChild(img);
+  } else if (type === 'video') {
+    const vid = document.createElement('video');
+    vid.src = extra.src;
+    vid.controls = true;
+    vid.style.width = '100%';
+    vid.style.height = '100%';
+    vid.style.pointerEvents = 'auto';
+    el.appendChild(vid);
+  }
+
+  el.addEventListener('mousedown', e => {
+    if (e.target.classList.contains('resize-handle') || e.target.classList.contains('delete-btn')) return;
+    if (e.target.classList.contains('txt-inner')) { selectEl(el); return; }
+    e.preventDefault();
+    selectEl(el);
+    dragEl = el;
+    const rect = canvas.getBoundingClientRect();
+    dragOffX = e.clientX - rect.left - parseFloat(el.style.left);
+    dragOffY = e.clientY - rect.top - parseFloat(el.style.top);
+  });
+
+  rz.addEventListener('mousedown', e => {
+    e.preventDefault(); e.stopPropagation();
+    resizing = true; resizeEl = el;
+    resizeStartX = e.clientX; resizeStartY = e.clientY;
+    resizeStartW = parseFloat(el.style.width);
+    resizeStartH = parseFloat(el.style.height) || el.offsetHeight;
+  });
+
+  canvas.appendChild(el);
+  updateHint();
+  return el;
+}
+
+function selectEl(el) {
+  if (selected && selected !== el) deselectAll();
+  selected = el;
+  el.classList.add('selected');
+  el.querySelector('.delete-btn').style.display = 'flex';
+  el.querySelector('.resize-handle').style.display = 'block';
+}
+
+function deselectAll() {
+  if (!selected) return;
+  selected.classList.remove('selected');
+  selected.querySelector('.delete-btn').style.display = 'none';
+  selected.querySelector('.resize-handle').style.display = 'none';
+  selected = null;
+}
+
+document.addEventListener('mousemove', e => {
+  if (dragEl) {
+    const rect = canvas.getBoundingClientRect();
+    let x = e.clientX - rect.left - dragOffX;
+    let y = e.clientY - rect.top - dragOffY;
+    x = Math.max(0, Math.min(canvas.offsetWidth - dragEl.offsetWidth, x));
+    y = Math.max(0, y);
+    dragEl.style.left = x + 'px';
+    dragEl.style.top = y + 'px';
+  }
+  if (resizing && resizeEl) {
+    const dw = e.clientX - resizeStartX;
+    const dh = e.clientY - resizeStartY;
+    resizeEl.style.width = Math.max(60, resizeStartW + dw) + 'px';
+    if (resizeEl.dataset.type !== 'text') {
+      resizeEl.style.height = Math.max(40, resizeStartH + dh) + 'px';
+    }
+  }
+});
+
+document.addEventListener('mouseup', () => { dragEl = null; resizing = false; resizeEl = null; });
+canvas.addEventListener('click', e => { if (e.target === canvas || e.target === hint) deselectAll(); });
+
+document.getElementById('btn-text').addEventListener('click', () => {
+  const el = makeEl('text', {
+    x: 80 + Math.random() * 200,
+    y: 80 + Math.random() * 200,
+    fontSize: parseInt(document.getElementById('font-size').value),
+    color: document.getElementById('color-pick').value
+  });
+  selectEl(el);
+  setTimeout(() => el.querySelector('.txt-inner').focus(), 50);
+});
+
+document.getElementById('btn-bold').addEventListener('click', () => {
+  if (selected && selected.dataset.type === 'text') {
+    const inner = selected.querySelector('.txt-inner');
+    inner.style.fontWeight = inner.style.fontWeight === '700' ? '400' : '700';
+  }
+});
+
+document.getElementById('btn-italic').addEventListener('click', () => {
+  if (selected && selected.dataset.type === 'text') {
+    const inner = selected.querySelector('.txt-inner');
+    inner.style.fontStyle = inner.style.fontStyle === 'italic' ? 'normal' : 'italic';
+  }
+});
+
+document.getElementById('color-pick').addEventListener('input', e => {
+  if (selected && selected.dataset.type === 'text') {
+    selected.querySelector('.txt-inner').style.color = e.target.value;
+  }
+});
+
+document.getElementById('font-size').addEventListener('change', e => {
+  if (selected && selected.dataset.type === 'text') {
+    selected.querySelector('.txt-inner').style.fontSize = e.target.value + 'px';
+  }
+});
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  canvas.querySelectorAll('.c-el').forEach(el => el.remove());
+  updateHint();
+});
+
+function handleFiles(files) {
+  let x = 40, y = 40;
+  [...files].forEach(file => {
+    const url = URL.createObjectURL(file);
+    const type = file.type.startsWith('video') ? 'video' : 'image';
+    makeEl(type, { src: url, x: x + Math.random() * 80, y: y + Math.random() * 60, w: 280, h: 200 });
+    x += 20; y += 20;
+  });
+}
+
+document.getElementById('media-input').addEventListener('change', e => handleFiles(e.target.files));
+canvas.addEventListener('dragover', e => { e.preventDefault(); canvas.classList.add('drag-over'); });
+canvas.addEventListener('dragleave', () => canvas.classList.remove('drag-over'));
+canvas.addEventListener('drop', e => {
+  e.preventDefault();
+  canvas.classList.remove('drag-over');
+  handleFiles(e.dataTransfer.files);
+});
+
+document.getElementById('btn-export').addEventListener('click', async () => {
+  deselectAll();
+  status.textContent = 'Generating PDF…';
+  await new Promise(r => setTimeout(r, 100));
+  try {
+    const cvs = await html2canvas(canvas, {
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      scale: 2
+    });
+    const imgData = cvs.toDataURL('image/png');
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({
+      orientation: 'landscape',
+      unit: 'px',
+      format: [canvas.offsetWidth, canvas.offsetHeight]
+    });
+    pdf.addImage(imgData, 'PNG', 0, 0, canvas.offsetWidth, canvas.offsetHeight);
+    pdf.save('canvas-export.pdf');
+    status.textContent = 'PDF saved!';
+    setTimeout(() => status.textContent = '', 3000);
+  } catch (err) {
+    status.textContent = 'Export failed: ' + err.message;
+  }
+});
+</script>
+</body>
+</html>
