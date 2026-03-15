@@ -1,0 +1,15 @@
+File: IMG_9533.HEIC
+Type: image/heic
+Size: 8799510 bytes
+ImageDecoder available: true
+createImageBitmap available: true
+
+--- Test 1: createImageBitmap ---
+
+--- Test 2: <img> objectURL ---
+
+--- Test 3: FileReader dataURL ---
+img error: "error"
+dataURL prefix: data:image/heic;base64,AAAALGZ0eXBoZWljAAAAAG1pZjFNaUhCTWlIR
+FAILED: InvalidStateError: The source image could not be decoded.
+dataURL img failed to render

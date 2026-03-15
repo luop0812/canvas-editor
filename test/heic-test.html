@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>HEIC Debug</title></head>
+<body>
+<input type="file" id="f" accept=".heic,.heif,image/*">
+<pre id="log" style="font-size:13px;line-height:1.6"></pre>
+<img id="preview" style="max-width:300px;margin-top:10px">
+<script>
+function log(msg) { document.getElementById('log').textContent += msg + '\n'; }
+document.getElementById('f').addEventListener('change', function(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  log('File: ' + file.name);
+  log('Type: ' + file.type);
+  log('Size: ' + file.size + ' bytes');
+  log('ImageDecoder available: ' + (typeof ImageDecoder !== 'undefined'));
+  log('createImageBitmap available: ' + (typeof createImageBitmap !== 'undefined'));
+
+  // Test 1: createImageBitmap
+  log('\n--- Test 1: createImageBitmap ---');
+  createImageBitmap(file)
+    .then(function(bmp) {
+      log('SUCCESS: ' + bmp.width + 'x' + bmp.height);
+      var c = document.createElement('canvas');
+      c.width = bmp.width; c.height = bmp.height;
+      c.getContext('2d').drawImage(bmp, 0, 0);
+      bmp.close();
+      document.getElementById('preview').src = c.toDataURL('image/png');
+    })
+    .catch(function(err) { log('FAILED: ' + err); });
+
+  // Test 2: img + objectURL
+  log('\n--- Test 2: <img> objectURL ---');
+  var url = URL.createObjectURL(file);
+  var img = new Image();
+  img.onload = function() { log('img loaded: ' + img.naturalWidth + 'x' + img.naturalHeight); };
+  img.onerror = function(e) { log('img error: ' + JSON.stringify(e.type)); };
+  img.src = url;
+
+  // Test 3: FileReader dataURL
+  log('\n--- Test 3: FileReader dataURL ---');
+  var r = new FileReader();
+  r.onload = function(e) {
+    var src = e.target.result;
+    log('dataURL prefix: ' + src.substring(0, 60));
+    var img2 = new Image();
+    img2.onload = function() { log('dataURL img loaded: ' + img2.naturalWidth + 'x' + img2.naturalHeight); };
+    img2.onerror = function() { log('dataURL img failed to render'); };
+    img2.src = src;
+  };
+  r.readAsDataURL(file);
+});
+</script>
+</body>
+</html>
