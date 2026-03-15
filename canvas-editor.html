@@ -6,7 +6,6 @@
 <title>Canvas Editor</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: system-ui, sans-serif; background: #f4f4f2; height: 100vh; display: flex; flex-direction: column; }
@@ -47,7 +46,7 @@
     <div class="sep"></div>
     <button class="tool-btn" id="btn-text">+ Text</button>
     <label class="tool-btn" for="media-input">+ Image / Video</label>
-    <input type="file" id="media-input" accept="image/*,video/*,.heic,.heif" style="display:none" multiple>
+    <input type="file" id="media-input" accept="image/*,video/*" style="display:none" multiple>
     <div class="sep"></div>
     <input type="color" id="color-pick" value="#1a1a1a" title="Text color">
     <select id="font-size" class="tool-btn">
@@ -75,6 +74,7 @@
     </div>
     <div class="sep"></div>
     <button class="tool-btn" id="btn-clear">Clear all</button>
+    <button class="tool-btn" id="btn-save">&#8595; Save as HTML</button>
     <button class="tool-btn" id="btn-export">&#8595; Export PDF</button>
     <span id="statusbar"></span>
   </div>
@@ -86,7 +86,7 @@
           <path d="M16 24h16M24 16v16" stroke="#b0ada6" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
         <p>Drop images or videos here</p>
-        <small>Supports JPG, PNG, GIF, WebP, HEIC and video</small>
+        <small>Supports JPG, PNG, GIF, WebP and video</small>
       </div>
     </div>
   </div>
@@ -250,12 +250,7 @@
     updateHint();
   });
 
-  /* ── HEIC conversion using heic2any (loaded synchronously in <head>) ── */
-  function isHeic(file) {
-    return file.type === 'image/heic' || file.type === 'image/heif' ||
-           /\.(heic|heif)$/i.test(file.name);
-  }
-
+  /* ── File loading ── */
   function readAsDataURL(blob) {
     return new Promise(function (resolve, reject) {
       var r = new FileReader();
@@ -266,25 +261,6 @@
   }
 
   function loadFile(file, opts) {
-    if (isHeic(file)) {
-      setStatus('Converting HEIC\u2026');
-      /* heic2any is loaded synchronously via <script> in <head> — it is guaranteed
-         to be defined by the time any user interaction triggers this code path.     */
-      heic2any({ blob: file, toType: 'image/png' })
-        .then(function (result) {
-          var blob = Array.isArray(result) ? result[0] : result;
-          return readAsDataURL(blob);
-        })
-        .then(function (src) {
-          setStatus('');
-          makeEl('image', Object.assign({}, opts, { src: src }));
-        })
-        .catch(function (err) {
-          setStatus('HEIC conversion failed: ' + (err.message || err), true, 7000);
-        });
-      return;
-    }
-
     var type = file.type.startsWith('video') ? 'video' : 'image';
     readAsDataURL(file)
       .then(function (src) { makeEl(type, Object.assign({}, opts, { src: src })); })
@@ -340,6 +316,52 @@
   /* allow Enter key in size inputs */
   canvasWInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') document.getElementById('btn-apply-size').click(); });
   canvasHInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') document.getElementById('btn-apply-size').click(); });
+
+  /* ── Save As HTML ── */
+  document.getElementById('btn-save').addEventListener('click', function () {
+    deselectAll();
+
+    var els = canvas.querySelectorAll('.c-el');
+    var elHTML = '';
+    els.forEach(function (el) {
+      var type = el.dataset.type;
+      var style = 'position:absolute;left:' + el.style.left + ';top:' + el.style.top +
+                  ';width:' + el.style.width + ';' +
+                  (el.style.height && el.style.height !== 'auto' ? 'height:' + el.style.height + ';' : '') +
+                  (el.style.minHeight ? 'min-height:' + el.style.minHeight + ';' : '');
+      if (type === 'image') {
+        var img = el.querySelector('img');
+        elHTML += '<img src="' + img.src + '" style="' + style + 'object-fit:contain;">\n';
+      } else if (type === 'video') {
+        var vid = el.querySelector('video');
+        elHTML += '<video src="' + vid.src + '" controls style="' + style + '"></video>\n';
+      } else if (type === 'text') {
+        var inner = el.querySelector('.txt-inner');
+        var ts = 'font-size:' + inner.style.fontSize + ';color:' + inner.style.color +
+                 ';font-weight:' + inner.style.fontWeight + ';font-style:' + inner.style.fontStyle +
+                 ';font-family:' + inner.style.fontFamily + ';word-break:break-word;white-space:pre-wrap;';
+        elHTML += '<div style="' + style + ts + '">' + inner.innerHTML + '</div>\n';
+      }
+    });
+
+    var cw = canvas.offsetWidth, ch = canvas.offsetHeight;
+    var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n' +
+      '<meta name="viewport" content="width=device-width,initial-scale=1">\n' +
+      '<title>Canvas Export</title>\n<style>\n' +
+      'body{margin:0;background:#f4f4f2;display:flex;align-items:flex-start;justify-content:flex-start;padding:24px;}\n' +
+      '#canvas{position:relative;width:' + cw + 'px;height:' + ch + 'px;background:#fff;' +
+      'border:1px solid #d0cec6;box-shadow:0 2px 8px rgba(0,0,0,0.08);overflow:hidden;}\n' +
+      '</style>\n</head>\n<body>\n<div id="canvas">\n' + elHTML + '</div>\n</body>\n</html>';
+
+    var blob = new Blob([html], { type: 'text/html' });
+    var url  = URL.createObjectURL(blob);
+    var a    = document.createElement('a');
+    a.href = url; a.download = 'canvas-export.html';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    setStatus('HTML saved!', false, 3000);
+  });
 
   /* ── PDF Export ── */
   document.getElementById('btn-export').addEventListener('click', function () {
