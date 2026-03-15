@@ -228,12 +228,22 @@
     }
   });
   document.addEventListener('mouseup', function () { dragEl = null; resizing = false; resizeEl = null; });
-  canvas.addEventListener('click', function (e) { if (e.target === canvas || e.target === hint) deselectAll(); });
+
+  // Track last click position on the canvas for placing new elements
+  var lastCanvasX = 60, lastCanvasY = 60;
+  canvas.addEventListener('click', function (e) {
+    if (e.target === canvas || e.target === hint) {
+      deselectAll();
+      var r = canvas.getBoundingClientRect();
+      lastCanvasX = e.clientX - r.left;
+      lastCanvasY = e.clientY - r.top;
+    }
+  });
 
   /* ── Toolbar ── */
   document.getElementById('btn-text').addEventListener('click', function () {
     var el = makeEl('text', {
-      x: 80 + Math.random() * 200, y: 80 + Math.random() * 200,
+      x: lastCanvasX, y: lastCanvasY,
       fontSize: parseInt(document.getElementById('font-size').value),
       color: document.getElementById('color-pick').value
     });
@@ -282,10 +292,11 @@
       .catch(function (err) { setStatus('Load failed: ' + err.message, true, 5000); });
   }
 
-  function handleFiles(files) {
-    var x = 40, y = 40;
+  function handleFiles(files, dropX, dropY) {
+    var x = dropX !== undefined ? dropX : lastCanvasX;
+    var y = dropY !== undefined ? dropY : lastCanvasY;
     Array.prototype.forEach.call(files, function (file) {
-      loadFile(file, { x: x + Math.random() * 80, y: y + Math.random() * 60, w: 280, h: 200 });
+      loadFile(file, { x: x, y: y, w: 280, h: 200 });
       x += 20; y += 20;
     });
   }
@@ -296,7 +307,9 @@
   canvas.addEventListener('dragover',  function (e) { e.preventDefault(); canvas.classList.add('drag-over'); });
   canvas.addEventListener('dragleave', function ()  { canvas.classList.remove('drag-over'); });
   canvas.addEventListener('drop', function (e) {
-    e.preventDefault(); canvas.classList.remove('drag-over'); handleFiles(e.dataTransfer.files);
+    e.preventDefault(); canvas.classList.remove('drag-over');
+    var r = canvas.getBoundingClientRect();
+    handleFiles(e.dataTransfer.files, e.clientX - r.left, e.clientY - r.top);
   });
 
   /* ── Canvas Size ── */
