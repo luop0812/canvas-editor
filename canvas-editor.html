@@ -367,15 +367,21 @@
   document.getElementById('btn-export').addEventListener('click', function () {
     deselectAll();
     setStatus('Generating PDF\u2026');
+    var cw = canvas.offsetWidth;
+    var ch = canvas.offsetHeight;
     setTimeout(function () {
-      html2canvas(canvas, { backgroundColor: '#ffffff', scale: 2, useCORS: true })
+      html2canvas(canvas, { backgroundColor: '#ffffff', scale: 2, useCORS: true, width: cw, height: ch })
         .then(function (cvs) {
           var imgData = cvs.toDataURL('image/png');
+          // Use mm units: 1px = 0.264583mm at 96dpi
+          var mmW = cw * 0.264583;
+          var mmH = ch * 0.264583;
           var pdf = new window.jspdf.jsPDF({
-            orientation: 'landscape', unit: 'px',
-            format: [canvas.offsetWidth, canvas.offsetHeight]
+            orientation: mmW >= mmH ? 'landscape' : 'portrait',
+            unit: 'mm',
+            format: [mmW, mmH]
           });
-          pdf.addImage(imgData, 'PNG', 0, 0, canvas.offsetWidth, canvas.offsetHeight);
+          pdf.addImage(imgData, 'PNG', 0, 0, mmW, mmH);
           pdf.save('canvas-export.pdf');
           setStatus('PDF saved!', false, 3000);
         })
