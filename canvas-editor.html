@@ -21,7 +21,9 @@
   .c-el.selected { outline: 2px solid #378ADD; outline-offset: 2px; }
   .c-el img { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
   .c-el video { width: 100%; height: 100%; display: block; }
-  .txt-inner { width: 100%; height: 100%; overflow: hidden; word-break: break-word; white-space: pre-wrap; outline: none; }
+  .txt-inner { width: 100%; overflow: auto; word-break: break-word; white-space: pre-wrap; outline: none; flex: 1; min-height: 30px; }
+  .txt-handle { width: 100%; height: 14px; cursor: move; background: transparent; flex-shrink: 0; }
+  .c-el.selected .txt-handle { background: repeating-linear-gradient(90deg, #378ADD 0px, #378ADD 3px, transparent 3px, transparent 7px); opacity: 0.35; border-radius: 2px; }
   .resize-handle { position: absolute; width: 11px; height: 11px; background: #fff; border: 2px solid #378ADD; border-radius: 2px; right: -6px; bottom: -6px; cursor: se-resize; z-index: 10; display: none; }
   .delete-btn { position: absolute; top: -11px; right: -11px; width: 22px; height: 22px; background: #E24B4A; color: #fff; border-radius: 50%; font-size: 15px; display: none; align-items: center; justify-content: center; cursor: pointer; z-index: 10; line-height: 1; }
   #drop-hint { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: #b0ada6; pointer-events: none; }
@@ -136,7 +138,7 @@
     el.style.top   = (opts.y || 60) + 'px';
     el.style.width = (opts.w || 260) + 'px';
     el.dataset.type = type;
-    if (type === 'text') { el.style.height = 'auto'; el.style.minHeight = '44px'; }
+    if (type === 'text') { el.style.height = 'auto'; el.style.minHeight = '58px'; el.style.display = 'flex'; el.style.flexDirection = 'column'; }
     else { el.style.height = (opts.h || 200) + 'px'; }
 
     var del = document.createElement('div');
@@ -157,6 +159,19 @@
     el.appendChild(rz);
 
     if (type === 'text') {
+      var handle = document.createElement('div');
+      handle.className = 'txt-handle';
+      handle.title = 'Drag to move';
+      handle.addEventListener('mousedown', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        selectEl(el);
+        dragEl = el;
+        var r = canvas.getBoundingClientRect();
+        dragOffX = e.clientX - r.left - parseFloat(el.style.left);
+        dragOffY = e.clientY - r.top  - parseFloat(el.style.top);
+      });
+      el.appendChild(handle);
+
       var inner = document.createElement('div');
       inner.className = 'txt-inner';
       inner.contentEditable = 'true';
